@@ -1,117 +1,200 @@
+# app.py
 import streamlit as st
-import preprocessor,helper
+import preprocessor, helper
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.graph_objects as go
+from PIL import Image
+import io
 
-st.sidebar.title("Whatsapp Chat Analyzer")
+# Set page config for wider layout
+st.set_page_config(layout="wide", page_title="WhatsApp Chat Analyzer", page_icon="💬")
 
-uploaded_file = st.sidebar.file_uploader("Choose a file")
+# Custom CSS for different colors and better fonts
+st.markdown("""
+    <style>
+    .sidebar .sidebar-content { background-color: #f0f2f6; }
+    h1 { color: #4CAF50; }
+    h2 { color: #FF5722; }
+    h3 { color: #2196F3; }
+    .header { font-size:24px; color: #FF5722; }
+    .stats-header { font-size:22px; color: #4CAF50; font-weight: bold; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Sidebar Title
+st.sidebar.title("💬 WhatsApp Chat Analyzer")
+
+uploaded_file = st.sidebar.file_uploader("Choose a file", type=["txt"])
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
     data = bytes_data.decode("utf-8")
     df = preprocessor.preprocess(data)
 
-    # fetch unique users
+    # Fetch unique users
     user_list = df['user'].unique().tolist()
-    user_list.remove('group_notification')
+    if 'group_notification' in user_list:
+        user_list.remove('group_notification')
     user_list.sort()
-    user_list.insert(0,"Overall")
+    user_list.insert(0, "Overall")
 
-    selected_user = st.sidebar.selectbox("Show analysis wrt",user_list)
+    selected_user = st.sidebar.selectbox("Analyze for", user_list)
 
+    # Show loading indicator for model initialization
     if st.sidebar.button("Show Analysis"):
+        with st.spinner("Loading models and analyzing data... This may take a moment."):
+            # Initialize NLP models only when needed
+            helper.initialize_models()
 
-        # Stats Area
-        num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user,df)
-        st.title("Top Statistics")
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.header("Total Messages")
-            st.title(num_messages)
-        with col2:
-            st.header("Total Words")
-            st.title(words)
-        with col3:
-            st.header("Media Shared")
-            st.title(num_media_messages)
-        with col4:
-            st.header("Links Shared")
-            st.title(num_links)
-
-        # monthly timeline
-        st.title("Monthly Timeline")
-        timeline = helper.monthly_timeline(selected_user,df)
-        fig,ax = plt.subplots()
-        ax.plot(timeline['time'], timeline['message'],color='green')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # daily timeline
-        st.title("Daily Timeline")
-        daily_timeline = helper.daily_timeline(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='black')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # activity map
-        st.title('Activity Map')
-        col1,col2 = st.columns(2)
-
-        with col1:
-            st.header("Most busy day")
-            busy_day = helper.week_activity_map(selected_user,df)
-            fig,ax = plt.subplots()
-            ax.bar(busy_day.index,busy_day.values,color='purple')
-            plt.xticks(rotation='vertical')
-            st.pyplot(fig)
-
-        with col2:
-            st.header("Most busy month")
-            busy_month = helper.month_activity_map(selected_user, df)
-            fig, ax = plt.subplots()
-            ax.bar(busy_month.index, busy_month.values,color='orange')
-            plt.xticks(rotation='vertical')
-            st.pyplot(fig)
-
-        st.title("Weekly Activity Map")
-        user_heatmap = helper.activity_heatmap(selected_user,df)
-        fig,ax = plt.subplots()
-        ax = sns.heatmap(user_heatmap)
-        st.pyplot(fig)
-
-        # finding the busiest users in the group(Group level)
-        if selected_user == 'Overall':
-            st.title('Most Busy Users')
-            x,new_df = helper.most_busy_users(df)
-            fig, ax = plt.subplots()
-
-            col1, col2 = st.columns(2)
+            # Top Statistics Section
+            num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user, df)
+            st.markdown("<div class='stats-header'>🔢 Top Statistics</div>", unsafe_allow_html=True)
+            col1, col2, col3, col4 = st.columns(4)
 
             with col1:
-                ax.bar(x.index, x.values,color='red')
+                st.subheader("Total Messages")
+                st.title(f"📩 {num_messages}")
+            with col2:
+                st.subheader("Total Words")
+                st.title(f"📝 {words}")
+            with col3:
+                st.subheader("Media Shared")
+                st.title(f"📷 {num_media_messages}")
+            with col4:
+                st.subheader("Links Shared")
+                st.title(f"🔗 {num_links}")
+
+            # Monthly Timeline
+            st.markdown("<h3>📅 Monthly Timeline</h3>", unsafe_allow_html=True)
+            timeline = helper.monthly_timeline(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.plot(timeline['time'], timeline['message'], color='green')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+            # Daily Timeline
+            st.markdown("<h3>📆 Daily Timeline</h3>", unsafe_allow_html=True)
+            daily_timeline = helper.daily_timeline(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='black')
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
+
+            # Activity Map
+            st.markdown("<h3>📊 Activity Map</h3>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Most Busy Day")
+                busy_day = helper.week_activity_map(selected_user, df)
+                fig, ax = plt.subplots()
+                ax.bar(busy_day.index, busy_day.values, color='purple')
                 plt.xticks(rotation='vertical')
                 st.pyplot(fig)
+
             with col2:
-                st.dataframe(new_df)
+                st.subheader("Most Busy Month")
+                busy_month = helper.month_activity_map(selected_user, df)
+                fig, ax = plt.subplots()
+                ax.bar(busy_month.index, busy_month.values, color='orange')
+                plt.xticks(rotation='vertical')
+                st.pyplot(fig)
 
-        # WordCloud
-        st.title("Wordcloud")
-        df_wc = helper.create_wordcloud(selected_user,df)
-        fig,ax = plt.subplots()
-        ax.imshow(df_wc)
-        st.pyplot(fig)
+            # Wordcloud with memory optimization
+            st.markdown("<h3>☁️ Wordcloud</h3>", unsafe_allow_html=True)
+            df_wc = helper.create_wordcloud(selected_user, df)
+            
+            # Convert matplotlib figure to PNG for memory optimization
+            fig, ax = plt.subplots()
+            ax.imshow(df_wc)
+            ax.axis('off')
+            
+            # Use BytesIO to avoid writing to disk
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png')
+            buf.seek(0)
+            st.image(buf)
 
-        # most common words
-        most_common_df = helper.most_common_words(selected_user,df)
+            # Most Common Words
+            most_common_df = helper.most_common_words(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.barh(most_common_df[0], most_common_df[1])
+            plt.xticks(rotation='vertical')
+            st.markdown("<h3>📜 Most Common Words</h3>", unsafe_allow_html=True)
+            st.pyplot(fig)
 
-        fig,ax = plt.subplots()
+            # Sentiment Analysis with progress indicator
+            with st.spinner("Performing sentiment analysis..."):
+                st.markdown("<h3>😊 Sentiment Analysis</h3>", unsafe_allow_html=True)
+                sentiment_df = helper.sentiment_analysis(selected_user, df)
+                st.write("Overall Sentiment Distribution:")
+                fig, ax = plt.subplots()
+                sentiment_df['sentiment'].value_counts().plot(kind='bar')
+                plt.xticks(rotation='vertical')
+                st.pyplot(fig)
+                st.write("Sample Messages with Sentiment:")
+                st.dataframe(sentiment_df.sample(min(10, len(sentiment_df))))
 
-        ax.barh(most_common_df[0],most_common_df[1])
-        plt.xticks(rotation='vertical')
+            # Intent Detection
+            st.markdown("<h3>🔍 Intent Detection</h3>", unsafe_allow_html=True)
+            intents = helper.intent_detection(selected_user, df)
+            fig, ax = plt.subplots()
+            ax.bar(intents.index, intents.values)
+            plt.xticks(rotation='vertical')
+            st.pyplot(fig)
 
-        st.title('Most commmon words')
-        st.pyplot(fig)
+            # Emotion Detection with progress indicator
+            with st.spinner("Analyzing emotions..."):
+                st.markdown("<h3>😄 Emotion Detection</h3>", unsafe_allow_html=True)
+                emotion_df = helper.emotion_detection(selected_user, df)
+                st.write("Overall Emotion Distribution:")
+                fig, ax = plt.subplots()
+                emotion_df['emotion'].value_counts().plot(kind='pie', autopct='%1.1f%%')
+                st.pyplot(fig)
+                st.write("Sample Messages with Detected Emotions:")
+                st.dataframe(emotion_df.sample(min(10, len(emotion_df))))
 
-        
+            # Toxicity Detection
+            st.markdown("<h3>⚠️ Toxicity Detection</h3>", unsafe_allow_html=True)
+            toxicity = helper.toxicity_detection(selected_user, df)
+            st.write(f"Average toxicity score: {toxicity:.2f} (0 is non-toxic, 1 is very toxic)")
+
+            # Summarization with progress indicator
+            with st.spinner("Generating conversation summary..."):
+                st.markdown("<h3>📝 Conversation Summary</h3>", unsafe_allow_html=True)
+                if len(df) > 5:  # Only generate if there's enough data
+                    summary = helper.generate_summary(df, selected_user)
+                    st.write(summary)
+                else:
+                    st.write("Not enough messages for a meaningful summary.")
+
+            # Predictive Conversation Continuation
+            with st.spinner("Generating conversation prediction..."):
+                st.markdown("<h3>🔮 Predictive Conversation Continuation</h3>", unsafe_allow_html=True)
+                if len(df) > 5:  # Only predict if there's enough data
+                    continuation = helper.predict_continuation(df, selected_user)
+                    st.write("Predicted continuation:")
+                    st.write(continuation)
+                else:
+                    st.write("Not enough messages for prediction.")
+
+            # Tone of Voice Visualization
+            st.markdown("<h3>🎭 Tone of Voice Visualization</h3>", unsafe_allow_html=True)
+            tones, tone_scores = helper.analyze_tone(df, selected_user)
+            fig = go.Figure(data=[go.Bar(x=tones, y=tone_scores, marker_color=['blue', 'red', 'green', 'yellow'])])
+            fig.update_layout(title_text='Conversation Tone Analysis')
+            st.plotly_chart(fig)
+
+            # Interactive Wordcloud with Sentiment Overlay
+            st.markdown("<h3>☁️ Interactive Wordcloud with Sentiment</h3>", unsafe_allow_html=True)
+            wordcloud, word_sentiments = helper.create_sentiment_wordcloud(df, selected_user)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis('off')
+            st.pyplot(fig)
+            
+            # Display a sample of word sentiments
+            st.write("Sample Word Sentiments:")
+            sentiment_items = list(word_sentiments.items())
+            sample_size = min(20, len(sentiment_items))
+            sample_sentiments = dict(sentiment_items[:sample_size])
+            st.write(sample_sentiments)
